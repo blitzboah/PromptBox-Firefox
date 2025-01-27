@@ -19,9 +19,18 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "css": ["styles.css"]
+      "matches": [
+        "https://claude.ai/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://chat.deepseek.com/*",
+        "https://console.groq.com/*"
+      ],
+      "js": ["content.js", "autocomplete.js", "test-autocomplete.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+
     }
   ],
   "icons": {
