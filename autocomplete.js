@@ -197,6 +197,53 @@ class PromptAutocomplete {
         }
     }
 
+    filterPrompts(content, allPrompts) {
+        if (!content) return [];
+        
+        const input = content.toLowerCase();
+        const results = [];
+        
+        // Generate all possible prefixes from the input
+        // e.g., "kush" -> ["kush", "ush", "sh", "h"]
+        const prefixes = [];
+        for (let i = 0; i < input.length; i++) {
+            prefixes.push(input.slice(i));
+        }
+        
+        // Check each prompt against all prefixes
+        allPrompts.forEach(prompt => {
+            const promptText = prompt.text.toLowerCase();
+            let maxMatchLength = 0;
+            
+            // Find the longest matching prefix for this prompt
+            prefixes.forEach(prefix => {
+                if (promptText.startsWith(prefix) && prefix.length > maxMatchLength) {
+                    maxMatchLength = prefix.length;
+                }
+            });
+            
+            // If we found a match, add it to results with its match score
+            if (maxMatchLength > 0) {
+                results.push({
+                    prompt: prompt,
+                    matchScore: maxMatchLength
+                });
+            }
+        });
+        
+        // Sort results by match score (highest first)
+        // If scores are equal, sort alphabetically
+        results.sort((a, b) => {
+            if (b.matchScore !== a.matchScore) {
+                return b.matchScore - a.matchScore;
+            }
+            return a.prompt.text.localeCompare(b.prompt.text);
+        });
+        
+        // Return just the prompts, without the scores
+        return results.map(result => result.prompt);
+}
+
     setupAutocomplete(inputElement) {
         this.inputElement = inputElement;
         
@@ -219,13 +266,11 @@ class PromptAutocomplete {
                         this.updateSuggestions();
                         return;
                     }
-
+                    
                     const allPrompts = [...(prompts.global || []), ...(prompts.local || [])];
                     
                     // Filter prompts based on current input
-                    this.currentSuggestions = allPrompts.filter(prompt => 
-                        prompt.text.toLowerCase().startsWith(content.toLowerCase())
-                    );
+                    this.currentSuggestions = this.filterPrompts(content, allPrompts)
 
                     console.log('Found suggestions:', this.currentSuggestions);
                     this.updateSuggestions();
