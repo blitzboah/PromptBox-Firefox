@@ -1,3 +1,213 @@
+class TrieNode {
+    constructor() {
+        this.children = new Map();
+        this.isEndOfWord = false;
+        this.prompt = null;
+        this.originalWord = '';
+    }
+}
+// Enhanced search engine with Trie and fuzzy search
+class AutocompleteEngine {
+    constructor() {
+        this.trie = new TrieNode();
+        this.fuzzyThreshold = 0.3;
+        this.initialize();
+        this.setupStorageListener();
+    }
+
+    async initialize() {
+        try {
+            const { prompts } = await chrome.storage.sync.get('prompts');
+            if (!prompts) {
+                console.log('No prompts found in storage');
+                return;
+            }
+            const allPrompts = [...(prompts.global || []), ...(prompts.local || [])];
+            this.buildTrie(allPrompts);
+        } catch (error) {
+            console.error('Error initializing autocomplete engine:', error);
+        }
+    }
+
+    setupStorageListener() {
+        chrome.storage.onChanged.addListener((changes, namespace) => {
+            if (namespace === 'sync' && changes.prompts) {
+                const allPrompts = [
+                    ...(changes.prompts.newValue.global || []),
+                    ...(changes.prompts.newValue.local || [])
+                ];
+                this.buildTrie(allPrompts);
+            }
+        });
+    }
+
+    buildTrie(prompts) {
+        this.trie = new TrieNode(); // Reset trie
+        prompts.forEach(prompt => this.insert(prompt));
+    }
+
+    insert(prompt) {
+        let node = this.trie;
+        const word = prompt.text.toLowerCase();
+        
+        for (const char of word) {
+            if (!node.children.has(char)) {
+                node.children.set(char, new TrieNode());
+            }
+            node = node.children.get(char);
+        }
+        
+        node.isEndOfWord = true;
+        node.prompt = prompt;
+        node.originalWord = word;
+    }
+
+    levenshteinDistance(str1, str2) {
+        const matrix = Array(str2.length + 1).fill(null)
+            .map(() => Array(str1.length + 1).fill(null));
+
+        for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+        for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+
+        for (let j = 1; j <= str2.length; j++) {
+            for (let i = 1; i <= str1.length; i++) {
+                const substitutionCost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+                matrix[j][i] = Math.min(
+                    matrix[j][i - 1] + 1,
+                    matrix[j - 1][i] + 1,
+                    matrix[j - 1][i - 1] + substitutionCost
+                );
+            }
+        }
+
+        return matrix[str2.length][str1.length];
+    }
+
+    getAllWords(node = this.trie, prefix = '', words = []) {
+        if (node.isEndOfWord) {
+            words.push({
+                prompt: node.prompt,
+                word: node.originalWord,
+                prefix: prefix
+            });
+        }
+
+        for (const [char, childNode] of node.children) {
+            this.getAllWords(childNode, prefix + char, words);
+        }
+
+        return words;
+    }
+
+   search(query) {
+        if (!query) return [];
+        query = query.toLowerCase();
+
+        // Generate all possible prefixes
+        const prefixes = [];
+        const words = query.split(' ');
+        let currentPhrase = '';
+
+        // Get full phrase prefixes
+        for (let i = 0; i < query.length; i++) {
+            prefixes.push(query.slice(i));
+        }
+
+        // Get word-based prefixes
+        for (let i = 0; i < words.length; i++) {
+            const phrase = words.slice(i).join(' ');
+            // Get all prefixes of this phrase
+            for (let j = 0; j < phrase.length; j++) {
+                prefixes.push(phrase.slice(j));
+            }
+        }
+
+        // Get prefix matches for each possible prefix
+        const prefixMatches = prefixes
+            .map(prefix => this.searchPrefix(prefix))
+            .flat();
+
+        // Get fuzzy matches
+        const fuzzyMatches = this.searchFuzzy(query);
+
+        // Combine and deduplicate
+        const seen = new Set();
+        const allMatches = [...prefixMatches, ...fuzzyMatches]
+            .filter(match => {
+                const id = match.prompt.text;
+                if (seen.has(id)) return false;
+                seen.add(id);
+                return true;
+            })
+            .sort((a, b) => {
+                // First prioritize prefix matches over fuzzy matches
+                if (a.matchType !== b.matchType) {
+                    return a.matchType === 'prefix' ? -1 : 1;
+                }
+                // For prefix matches, prioritize by length of match
+                if (a.matchType === 'prefix' && b.matchType === 'prefix') {
+                    return b.score - a.score;
+                }
+                // For fuzzy matches, use the similarity score
+                return b.score - a.score;
+            });
+
+        return allMatches.map(match => match.prompt);
+    }
+
+    searchPrefix(prefix) {
+        let node = this.trie;
+        const results = [];
+        
+        // Navigate to prefix node
+        for (const char of prefix) {
+            if (!node.children.has(char)) return [];
+            node = node.children.get(char);
+        }
+
+        // Collect all words under this node, including the prefix length as score
+        this.collectWords(node, prefix, results, prefix.length);
+        return results;
+    }
+
+    searchFuzzy(query) {
+        const allWords = this.getAllWords();
+        const results = [];
+
+        allWords.forEach(({prompt, word}) => {
+            const distance = this.levenshteinDistance(query, word);
+            const maxLength = Math.max(query.length, word.length);
+            const similarity = 1 - (distance / maxLength);
+
+            if (similarity > this.fuzzyThreshold) {
+                results.push({
+                    prompt,
+                    matchType: 'fuzzy',
+                    score: similarity
+                });
+            }
+        });
+
+        return results;
+    }
+
+    collectWords(node, prefix, results, prefixLength) {
+        if (node.isEndOfWord) {
+            results.push({
+                prompt: node.prompt,
+                matchType: 'prefix',
+                score: prefixLength  // Use the length of the matching prefix as score
+            });
+        }
+    
+        for (const [char, childNode] of node.children) {
+            this.collectWords(childNode, prefix + char, results, prefixLength);
+        }
+    }
+
+}
+
+
 class PromptAutocomplete {
     constructor() {
         this.currentSuggestions = [];
@@ -13,6 +223,8 @@ class PromptAutocomplete {
         this.xOffset = 0;
         this.yOffset = 0;
         
+        this.searchEngine = new AutocompleteEngine();
+
         // Initialize after constructor
         setTimeout(() => this.initialize(), 0);
     }
@@ -197,52 +409,7 @@ class PromptAutocomplete {
         }
     }
 
-    filterPrompts(content, allPrompts) {
-        if (!content) return [];
-        
-        const input = content.toLowerCase();
-        const results = [];
-        
-        // Generate all possible prefixes from the input
-        // e.g., "kush" -> ["kush", "ush", "sh", "h"]
-        const prefixes = [];
-        for (let i = 0; i < input.length; i++) {
-            prefixes.push(input.slice(i));
-        }
-        
-        // Check each prompt against all prefixes
-        allPrompts.forEach(prompt => {
-            const promptText = prompt.text.toLowerCase();
-            let maxMatchLength = 0;
-            
-            // Find the longest matching prefix for this prompt
-            prefixes.forEach(prefix => {
-                if (promptText.startsWith(prefix) && prefix.length > maxMatchLength) {
-                    maxMatchLength = prefix.length;
-                }
-            });
-            
-            // If we found a match, add it to results with its match score
-            if (maxMatchLength > 0) {
-                results.push({
-                    prompt: prompt,
-                    matchScore: maxMatchLength
-                });
-            }
-        });
-        
-        // Sort results by match score (highest first)
-        // If scores are equal, sort alphabetically
-        results.sort((a, b) => {
-            if (b.matchScore !== a.matchScore) {
-                return b.matchScore - a.matchScore;
-            }
-            return a.prompt.text.localeCompare(b.prompt.text);
-        });
-        
-        // Return just the prompts, without the scores
-        return results.map(result => result.prompt);
-}
+  
 
     setupAutocomplete(inputElement) {
         this.inputElement = inputElement;
@@ -251,27 +418,15 @@ class PromptAutocomplete {
         let debounceTimeout;
         inputElement.addEventListener('input', async (e) => {
             clearTimeout(debounceTimeout);
-            debounceTimeout = setTimeout(async () => {
+            debounceTimeout = setTimeout(() => {
                 const content = e.target.textContent;
                 
                 if (content === this.lastContent) return;
                 this.lastContent = content;
 
                 try {
-                    // Get suggestions from storage
-                    const { prompts } = await chrome.storage.sync.get('prompts');
-                    if (!prompts) {
-                        console.log('No prompts found in storage');
-                        this.currentSuggestions = [];
-                        this.updateSuggestions();
-                        return;
-                    }
-                    
-                    const allPrompts = [...(prompts.global || []), ...(prompts.local || [])];
-                    
-                    // Filter prompts based on current input
-                    this.currentSuggestions = this.filterPrompts(content, allPrompts)
-
+                    // Use the new search engine instead of the old filterPrompts
+                    this.currentSuggestions = this.searchEngine.search(content);
                     console.log('Found suggestions:', this.currentSuggestions);
                     this.updateSuggestions();
                 } catch (error) {
