@@ -441,20 +441,13 @@ class PromptAutocomplete {
         inputElement.addEventListener('keydown', (e) => {
             if (!this.currentSuggestions.length) return;
             
-            switch(e.key) {
-                case 'Tab':
-                case 'Enter':
-                    if (this.currentSuggestions.length > 0) {
-                        e.preventDefault();
-                        this.completeSuggestion(this.currentSuggestions[0]);
-                    }
-                    break;
-                case 'Escape':
-                    this.currentSuggestions = [];
-                    this.updateSuggestions();
-                    break;
+            if (e.key === 'Tab') {
+                if (this.currentSuggestions.length > 0) {
+                    e.preventDefault();
+                    this.completeSuggestion(this.currentSuggestions[0]);
+                }
             }
-        });
+        }); 
     }
 
     updateSuggestions() {
@@ -508,10 +501,48 @@ class PromptAutocomplete {
     completeSuggestion(suggestion) {
         if (!this.inputElement) return;
         
-        console.log('Completing suggestion:', suggestion);
-        
-        // Insert the suggestion text with proper paragraph formatting
-        this.inputElement.innerHTML = `<p>${suggestion.text}</p>`;
+        const currentContent = this.inputElement.textContent.trim();
+        const suggestionText = suggestion.text.trim();
+
+        // Function to find the longest common suffix-prefix
+        const findLongestCommonSuffixPrefix = (str1, str2) => {
+            let maxLength = 0;
+            let endIndex = 0;
+
+            // Check each possible suffix of str1 against prefix of str2
+            for (let i = 1; i <= Math.min(str1.length, str2.length); i++) {
+                const suffix = str1.slice(-i);
+                const prefix = str2.slice(0, i);
+
+                if (suffix === prefix) {
+                    maxLength = i;
+                    endIndex = i;
+                }
+            }
+
+            return {
+                commonLength: maxLength,
+                endIndex: endIndex
+            };
+        };
+
+        // Find the overlap
+        const { commonLength, endIndex } = findLongestCommonSuffixPrefix(
+            currentContent.toLowerCase(), 
+            suggestionText.toLowerCase()
+        );
+
+        // Construct the final string by removing the overlap
+        const finalString = currentContent + suggestionText.slice(endIndex);
+
+        console.log('Current content:', currentContent);
+        console.log('Suggestion to append:', suggestionText);
+        console.log('Overlap length:', commonLength);
+        console.log('Final string:', finalString);
+
+        // Update the input with the new content
+        this.inputElement.innerHTML = `<p>${finalString}</p>`;
+
         
         // Move cursor to end
         const selection = window.getSelection();

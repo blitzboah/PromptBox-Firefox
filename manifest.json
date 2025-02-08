@@ -27,7 +27,7 @@
         "https://chat.deepseek.com/*",
         "https://console.groq.com/*"
       ],
-      "js": ["content.js", "autocomplete.js", "test-autocomplete.js"],
+      "js": ["content.js", "autocomplete.js"],
       "css": ["styles.css"],
       "run_at": "document_end"
 
