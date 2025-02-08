@@ -258,6 +258,100 @@ class PromptAutocomplete {
         });
     }
 
+    createGhostOverlay() {
+        // Create ghost overlay element
+        this.ghostOverlay = document.createElement('div');
+        Object.assign(this.ghostOverlay.style, {
+            position: 'absolute',
+            pointerEvents: 'none',
+            color: '#8888',
+            zIndex: '1000',
+            whiteSpace: 'pre-wrap',
+            fontFamily: 'inherit',
+            fontSize: 'inherit',
+            padding: 'inherit',
+            visibility: 'hidden'
+        });
+        document.body.appendChild(this.ghostOverlay);
+    }
+    
+    updateGhostOverlay() {
+        if (!this.inputElement || !this.ghostOverlay || this.currentSuggestions.length === 0) {
+            if (this.ghostOverlay) {
+                this.ghostOverlay.style.visibility = 'hidden';
+            }
+            return;
+        }
+    
+        const currentContent = this.inputElement.textContent.trim();
+        const suggestion = this.currentSuggestions[0];
+    
+        // Find the common prefix
+        const { endIndex } = this.findLongestCommonSuffixPrefix(
+            currentContent.toLowerCase(),
+            suggestion.text.toLowerCase()
+        );
+    
+        // Get the ghost text (remaining part of suggestion)
+        let ghostText = suggestion.text.slice(endIndex).trim();
+        
+        // Limit to at most 3 words
+        const words = ghostText.split(/\s+/);
+        ghostText = words.slice(0, 3).join(' ');
+    
+        if (!ghostText) {
+            this.ghostOverlay.style.visibility = 'hidden';
+            return;
+        }
+    
+        // Position the ghost overlay
+        const rect = this.inputElement.getBoundingClientRect();
+        const selection = window.getSelection();
+        let range;
+    
+        if (selection.rangeCount > 0) {
+            range = selection.getRangeAt(0).cloneRange();
+        } else {
+            range = document.createRange();
+            range.selectNodeContents(this.inputElement);
+            range.collapse(false);
+        }
+    
+        const tempSpan = document.createElement('span');
+        range.insertNode(tempSpan);
+        const spanRect = tempSpan.getBoundingClientRect();
+        tempSpan.remove();
+    
+        Object.assign(this.ghostOverlay.style, {
+            top: `${spanRect.top}px`,
+            left: `${spanRect.left}px`,
+            visibility: 'visible'
+        });
+    
+        this.ghostOverlay.textContent = ghostText;
+    }
+    
+
+    findLongestCommonSuffixPrefix(str1, str2) {
+        let maxLength = 0;
+        let endIndex = 0;
+        
+        for (let i = 1; i <= Math.min(str1.length, str2.length); i++) {
+            const suffix = str1.slice(-i);
+            const prefix = str2.slice(0, i);
+
+            if (suffix === prefix) {
+                maxLength = i;
+                endIndex = i;
+            }
+        }
+
+        return {
+            commonLength: maxLength,
+            endIndex: endIndex
+        };
+    }
+
     createSuggestionsContainer() {
         try {
             // Remove existing container if any
@@ -413,6 +507,7 @@ class PromptAutocomplete {
 
     setupAutocomplete(inputElement) {
         this.inputElement = inputElement;
+        this.createGhostOverlay() ;
         
         // Handle input events with debouncing
         let debounceTimeout;
@@ -429,12 +524,20 @@ class PromptAutocomplete {
                     this.currentSuggestions = this.searchEngine.search(content);
                     console.log('Found suggestions:', this.currentSuggestions);
                     this.updateSuggestions();
+                    this.updateGhostOverlay() ;
                 } catch (error) {
                     console.error('Error getting suggestions:', error);
                     this.currentSuggestions = [];
                     this.updateSuggestions();
+                    this.updateGhostOverlay() ;
                 }
             }, 150);
+        });
+
+        document.addEventListener('selectionchange', () => {
+            if (this.currentSuggestions.length > 0) {
+                this.updateGhostOverlay();
+            }
         });
 
         // Handle keyboard navigation
@@ -445,6 +548,7 @@ class PromptAutocomplete {
                 if (this.currentSuggestions.length > 0) {
                     e.preventDefault();
                     this.completeSuggestion(this.currentSuggestions[0]);
+                    this.updateGhostOverlay() ;
                 }
             }
         }); 
