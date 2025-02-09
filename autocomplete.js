@@ -264,7 +264,7 @@ class PromptAutocomplete {
         Object.assign(this.ghostOverlay.style, {
             position: 'absolute',
             pointerEvents: 'none',
-            color: '#8888',
+            color: '#666',
             zIndex: '1000',
             whiteSpace: 'pre-wrap',
             fontFamily: 'inherit',
@@ -580,6 +580,7 @@ class PromptAutocomplete {
                 cursor: 'pointer',
                 borderBottom: '1px solid #eee',
                 backgroundColor: 'white',
+                color: '#000',
                 transition: 'background-color 0.2s'
             });
             

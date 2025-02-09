@@ -12,8 +12,9 @@ class PromptBox {
     this.loadState().then(() => {
       this.render();
       this.setupToggleShortcut();
+    }).catch(error => {
+      console.error('Error loading state:', error);
     });
-    this.editingId = null;
   }
 
   createContainers() {
@@ -37,7 +38,7 @@ class PromptBox {
 
   async loadState() {
     try {
-      const data = await chrome.storage.sync.get(['prompts', 'position', 'togglePosition', 'isExpanded', 'activeTab']);
+      const data = await browser.storage.sync.get(['prompts', 'position', 'togglePosition', 'isExpanded', 'activeTab']);
       if (data.prompts) {
         this.prompts = data.prompts;
       }
@@ -57,6 +58,12 @@ class PromptBox {
       this.updatePositions();
     } catch (error) {
       console.error('Error loading state:', error);
+      // Set default values if loading fails
+      this.prompts = { global: [], local: [] };
+      this.position = { x: 800, y: 20 };
+      this.togglePosition = { x: 900, y: 8 };
+      this.activeTab = 'local';
+      this.isExpanded = false;
     }
   }
 
@@ -76,7 +83,7 @@ class PromptBox {
 
   async saveState() {
     try {
-      await chrome.storage.sync.set({
+      await browser.storage.sync.set({
         prompts: this.prompts,
         position: this.position,
         togglePosition: this.togglePosition,
@@ -87,6 +94,7 @@ class PromptBox {
       console.error('Error saving state:', error);
     }
   }
+
 
   toggleExpand() {
     this.isExpanded = !this.isExpanded;
@@ -318,7 +326,17 @@ class PromptBox {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => new PromptBox());
+  document.addEventListener('DOMContentLoaded', initializeExtension);
 } else {
-  new PromptBox();
+  initializeExtension();
+}
+
+function initializeExtension() {
+  try {
+    const promptBox = new PromptBox();
+    // Store instance in window for debugging
+    window._promptBox = promptBox;
+  } catch (error) {
+    console.error('Failed to initialize PromptBox:', error);
+  }
 }
